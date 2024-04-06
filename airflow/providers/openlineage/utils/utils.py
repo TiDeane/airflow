@@ -25,21 +25,25 @@ from functools import wraps
 from typing import TYPE_CHECKING, Any, Iterable
 
 import attrs
-from attrs import asdict
+from openlineage.client.utils import RedactMixin  # TODO: move this maybe to Airflow's logic?
 
-# TODO: move this maybe to Airflow's logic?
-from openlineage.client.utils import RedactMixin
-
+from airflow.models import DAG, BaseOperator, MappedOperator
 from airflow.providers.openlineage import conf
 from airflow.providers.openlineage.plugins.facets import (
     AirflowMappedTaskRunFacet,
     AirflowRunFacet,
+    UnknownOperatorAttributeRunFacet,
+    UnknownOperatorInstance,
+)
+from airflow.providers.openlineage.utils.selective_enable import (
+    is_dag_lineage_enabled,
+    is_task_lineage_enabled,
 )
 from airflow.utils.context import AirflowContextDeprecationWarning
 from airflow.utils.log.secrets_masker import Redactable, Redacted, SecretsMasker, should_hide_value_for_key
 
 if TYPE_CHECKING:
-    from airflow.models import DAG, BaseOperator, DagRun, MappedOperator, TaskInstance
+    from airflow.models import DagRun, TaskInstance
 
 
 log = logging.getLogger(__name__)
@@ -71,6 +75,18 @@ def get_fully_qualified_class_name(operator: BaseOperator | MappedOperator) -> s
 
 def is_operator_disabled(operator: BaseOperator | MappedOperator) -> bool:
     return get_fully_qualified_class_name(operator) in conf.disabled_operators()
+
+
+def is_selective_lineage_enabled(obj: DAG | BaseOperator | MappedOperator) -> bool:
+    """If selective enable is active check if DAG or Task is enabled to emit events."""
+    if not conf.selective_enable():
+        return True
+    if isinstance(obj, DAG):
+        return is_dag_lineage_enabled(obj)
+    elif isinstance(obj, (BaseOperator, MappedOperator)):
+        return is_task_lineage_enabled(obj)
+    else:
+        raise TypeError("is_selective_lineage_enabled can only be used on DAG or Operator objects")
 
 
 class InfoJsonEncodable(dict):
@@ -179,23 +195,34 @@ class TaskInfo(InfoJsonEncodable):
     """Defines encoding BaseOperator/AbstractOperator object to JSON."""
 
     renames = {
-        "_BaseOperator__init_kwargs": "args",
         "_BaseOperator__from_mapped": "mapped",
         "_downstream_task_ids": "downstream_task_ids",
         "_upstream_task_ids": "upstream_task_ids",
+        "_is_setup": "is_setup",
+        "_is_teardown": "is_teardown",
     }
-    excludes = [
-        "_BaseOperator__instantiated",
-        "_dag",
-        "_hook",
-        "_log",
-        "_outlets",
-        "_inlets",
-        "_lock_for_execution",
-        "handler",
-        "params",
-        "python_callable",
-        "retry_delay",
+    includes = [
+        "depends_on_past",
+        "downstream_task_ids",
+        "execution_timeout",
+        "executor_config",
+        "ignore_first_depends_on_past",
+        "max_active_tis_per_dag",
+        "max_active_tis_per_dagrun",
+        "max_retry_delay",
+        "multiple_outputs",
+        "owner",
+        "priority_weight",
+        "queue",
+        "retries",
+        "retry_exponential_backoff",
+        "run_as_user",
+        "task_id",
+        "trigger_rule",
+        "upstream_task_ids",
+        "wait_for_downstream",
+        "wait_for_past_depends_before_skipping",
+        "weight_rule",
     ]
     casts = {
         "operator_class": lambda task: task.task_type,
@@ -229,18 +256,30 @@ def get_airflow_run_facet(
     task_uuid: str,
 ):
     return {
-        "airflow": json.loads(
-            json.dumps(
-                asdict(
-                    AirflowRunFacet(
-                        dag=DagInfo(dag),
-                        dagRun=DagRunInfo(dag_run),
-                        taskInstance=TaskInstanceInfo(task_instance),
-                        task=TaskInfo(task),
-                        taskUuid=task_uuid,
+        "airflow": attrs.asdict(
+            AirflowRunFacet(
+                dag=DagInfo(dag),
+                dagRun=DagRunInfo(dag_run),
+                taskInstance=TaskInstanceInfo(task_instance),
+                task=TaskInfo(task),
+                taskUuid=task_uuid,
+            )
+        )
+    }
+
+
+def get_unknown_source_attribute_run_facet(task: BaseOperator, name: str | None = None):
+    if not name:
+        name = get_operator_class(task).__name__
+    return {
+        "unknownSourceAttribute": attrs.asdict(
+            UnknownOperatorAttributeRunFacet(
+                unknownItems=[
+                    UnknownOperatorInstance(
+                        name=name,
+                        properties=TaskInfo(task),
                     )
-                ),
-                default=str,
+                ]
             )
         )
     }

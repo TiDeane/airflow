@@ -381,12 +381,15 @@ def prepare_base_build_command(image_params: CommonBuildParams) -> list[str]:
             ]
         )
         if not image_params.docker_host:
+            builder = get_and_use_docker_context(image_params.builder)
             build_command_param.extend(
                 [
                     "--builder",
-                    get_and_use_docker_context(image_params.builder),
+                    builder,
                 ]
             )
+            if builder != "default":
+                build_command_param.append("--load")
     else:
         build_command_param.append("build")
     return build_command_param
@@ -609,7 +612,7 @@ def remove_docker_networks(networks: list[str] | None = None) -> None:
 # and it does not require the user to belong to the "docker" group.
 # The "default" context is the traditional one that requires "/var/run/docker.sock" to be writeable by the
 # user running the docker command.
-PREFERRED_CONTEXTS = ["desktop-linux", "default"]
+PREFERRED_CONTEXTS = ["orbstack", "desktop-linux", "default"]
 
 
 def autodetect_docker_context():
@@ -658,6 +661,7 @@ def autodetect_docker_context():
 def get_and_use_docker_context(context: str):
     if context == "autodetect":
         context = autodetect_docker_context()
+    run_command(["docker", "context", "create", context], check=False)
     output = run_command(["docker", "context", "use", context], check=False)
     if output.returncode != 0:
         get_console().print(

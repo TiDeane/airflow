@@ -20,6 +20,7 @@ import itertools
 import json
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 from subprocess import run
@@ -139,7 +140,7 @@ CORE_EXTRAS: dict[str, list[str]] = {
         "statsd>=3.3.0",
     ],
     "uv": [
-        "uv>=0.1.24",
+        "uv>=0.1.29",
     ],
     "virtualenv": [
         "virtualenv",
@@ -255,6 +256,7 @@ DEVEL_EXTRAS: dict[str, list[str]] = {
         "coverage>=7.4.0",
         "pytest-asyncio>=0.23.3",
         "pytest-cov>=4.1.0",
+        "pytest-custom-exit-code>=0.3.0",
         "pytest-icdiff>=0.9",
         "pytest-instafail>=0.5.0",
         "pytest-mock>=3.12.0",
@@ -447,7 +449,7 @@ DEPENDENCIES = [
     "google-re2>=1.0",
     "gunicorn>=20.1.0",
     "httpx",
-    'importlib_metadata>=1.7;python_version<"3.9"',
+    'importlib_metadata>=6.5;python_version<"3.12"',
     # Importib_resources 6.2.0-6.3.1 break pytest_rewrite
     # see https://github.com/python/importlib_resources/issues/299
     'importlib_resources>=5.2,!=6.2.0,!=6.3.0,!=6.3.1;python_version<"3.9"',
@@ -461,6 +463,7 @@ DEPENDENCIES = [
     "markupsafe>=1.1.1",
     "marshmallow-oneofschema>=2.0.1",
     "mdit-py-plugins>=0.3.0",
+    "methodtools>=0.4.7",
     "opentelemetry-api>=1.15.0",
     "opentelemetry-exporter-otlp",
     "packaging>=14.0",
@@ -553,7 +556,22 @@ def get_provider_id(provider_spec: str) -> str:
 
 def get_provider_requirement(provider_spec: str) -> str:
     if ">=" in provider_spec:
+        # we cannot import `airflow` here directly as it would pull re2 and a number of airflow
+        # dependencies so we need to read airflow version by matching a regexp
+        airflow_init_content = (AIRFLOW_ROOT_PATH / "airflow" / "__init__.py").read_text()
+        airflow_version_pattern = r'__version__ = "(\d+\.\d+\.\d+\S*)"'
+        airflow_version_match = re.search(airflow_version_pattern, airflow_init_content)
+        if not airflow_version_match:
+            raise RuntimeError("Cannot find Airflow version in airflow/__init__.py")
+        from packaging.version import Version
+
+        current_airflow_version = Version(airflow_version_match.group(1))
         provider_id, min_version = provider_spec.split(">=")
+        provider_version = Version(min_version)
+        if provider_version.is_prerelease and not current_airflow_version.is_prerelease:
+            # strip pre-release version from the pre-installed provider's version when we are preparing
+            # the official package
+            min_version = str(provider_version.base_version)
         return f"apache-airflow-providers-{provider_id.replace('.', '-')}>={min_version}"
     else:
         return f"apache-airflow-providers-{provider_spec.replace('.', '-')}"
@@ -574,11 +592,12 @@ for provider_spec in PRE_INSTALLED_PROVIDERS:
     if PROVIDER_DEPENDENCIES[provider_id]["state"] not in ["ready", "suspended", "removed"]:
         for dependency in PROVIDER_DEPENDENCIES[provider_id]["deps"]:
             if dependency.startswith("apache-airflow-providers"):
-                raise Exception(
+                msg = (
                     f"The provider {provider_id} is pre-installed and it has as dependency "
                     f"to another provider {dependency}. This is not allowed. Pre-installed"
                     f"providers should only have 'apache-airflow' and regular dependencies."
                 )
+                raise SystemExit(msg)
             if not dependency.startswith("apache-airflow"):
                 PREINSTALLED_NOT_READY_DEPS.append(dependency)
 
