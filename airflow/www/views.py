@@ -747,6 +747,7 @@ class Airflow(AirflowBaseView):
         current_page = request.args.get("page", default=0, type=int)
         arg_search_query = request.args.get("search")
         arg_tags_filter = request.args.getlist("tags")
+        use_and = request.args.get("use_and") == "true"
         arg_status_filter = request.args.get("status")
         arg_sorting_key = request.args.get("sorting_key", "dag_id")
         arg_sorting_direction = request.args.get("sorting_direction", default="asc")
@@ -798,7 +799,11 @@ class Airflow(AirflowBaseView):
                 )
 
             if arg_tags_filter:
-                dags_query = dags_query.where(DagModel.tags.any(DagTag.name.in_(arg_tags_filter)))
+                if use_and:
+                    conditions = [DagModel.tags.any(DagTag.name == tag) for tag in arg_tags_filter]
+                    dags_query = dags_query.filter(and_(*conditions))
+                else:
+                    dags_query = dags_query.where(DagModel.tags.any(DagTag.name.in_(arg_tags_filter)))
 
             dags_query = dags_query.where(DagModel.dag_id.in_(filter_dag_ids))
             filtered_dag_count = get_query_count(dags_query, session=session)

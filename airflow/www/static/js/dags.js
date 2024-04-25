@@ -60,19 +60,7 @@ $("#tags_filter").select2({
 
 $("#tags_filter").on("change", (e) => {
   e.preventDefault();
-  const query = new URLSearchParams(window.location.search);
-  const tags = $(e.target).select2("val");
-  if (tags.length) {
-    if (query.has("tags")) query.delete("tags");
-    tags.forEach((value) => {
-      query.append("tags", value);
-    });
-  } else {
-    query.delete("tags");
-    query.set("reset_tags", "reset");
-  }
-  if (query.has("page")) query.delete("page");
-  window.location = `${DAGS_INDEX}?${query.toString()}`;
+  applyTagFilter();
 });
 
 $("#tags_form").on("reset", (e) => {
@@ -82,6 +70,11 @@ $("#tags_form").on("reset", (e) => {
   if (query.has("page")) query.delete("page");
   query.set("reset_tags", "reset");
   window.location = `${DAGS_INDEX}?${query.toString()}`;
+});
+
+$("#use_and_checkbox").on("change", (e) => {
+  e.preventDefault();
+  applyTagFilter();
 });
 
 $("#dag_query").on("keypress", (e) => {
@@ -154,6 +147,24 @@ const diameter = 25;
 const circleMargin = 4;
 const strokeWidth = 2;
 const strokeWidthHover = 6;
+
+function applyTagFilter() {
+  const query = new URLSearchParams(window.location.search);
+  const tags = $("#tags_filter").select2("val");
+  const useAnd = $("#use_and_checkbox").is(":checked");
+  if (tags.length) {
+    if (query.has("tags")) query.delete("tags");
+    tags.forEach((value) => {
+      query.append("tags", value);
+    });
+  } else {
+    query.delete("tags");
+    query.set("reset_tags", "reset");
+  }
+  if (query.has("page")) query.delete("page");
+  query.set("use_and", useAnd.toString());
+  window.location = `${DAGS_INDEX}?${query.toString()}`;
+}
 
 function blockedHandler(error, json) {
   $.each(json, function handleBlock() {
