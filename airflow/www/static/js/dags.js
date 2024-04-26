@@ -72,7 +72,7 @@ $("#tags_form").on("reset", (e) => {
   window.location = `${DAGS_INDEX}?${query.toString()}`;
 });
 
-$("#use_and_checkbox").on("change", (e) => {
+$("#use_and_checkbox").change((e) => {
   e.preventDefault();
   applyTagFilter();
 });
@@ -163,6 +163,8 @@ function applyTagFilter() {
   }
   if (query.has("page")) query.delete("page");
   query.set("use_and", useAnd.toString());
+  if (useAnd) query.set("use_and", useAnd.toString());
+  else query.delete("use_and");
   window.location = `${DAGS_INDEX}?${query.toString()}`;
 }
 
