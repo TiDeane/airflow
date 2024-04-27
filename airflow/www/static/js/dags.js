@@ -77,9 +77,9 @@ $("#use_and_checkbox").change((e) => {
   applyTagFilter();
 
   if ($("#use_and_checkbox").is(":checked")) {
-    localStorage.removeItem("andLogicCheckbox");
-  } else {
     localStorage.setItem("andLogicCheckbox", "true");
+  } else {
+    localStorage.removeItem("andLogicCheckbox");
   }
 
 });
@@ -476,7 +476,7 @@ function startOrStopRefresh() {
 
 function initAndCheckbox() {
   const isDisabled = localStorage.getItem("andLogicCheckbox");
-  $("#use_and_checkbox").prop("checked", !isDisabled);
+  $("#use_and_checkbox").prop("checked", isDisabled);
 }
 
 function initAutoRefresh() {
