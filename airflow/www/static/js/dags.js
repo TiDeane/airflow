@@ -75,6 +75,13 @@ $("#tags_form").on("reset", (e) => {
 $("#use_and_checkbox").change((e) => {
   e.preventDefault();
   applyTagFilter();
+
+  if ($("#use_and_checkbox").is(":checked")) {
+    localStorage.removeItem("andLogicCheckbox");
+  } else {
+    localStorage.setItem("andLogicCheckbox", "true");
+  }
+
 });
 
 $("#dag_query").on("keypress", (e) => {
@@ -467,6 +474,11 @@ function startOrStopRefresh() {
   }
 }
 
+function initAndCheckbox() {
+  const isDisabled = localStorage.getItem("andLogicCheckbox");
+  $("#use_and_checkbox").prop("checked", !isDisabled);
+}
+
 function initAutoRefresh() {
   const isDisabled = localStorage.getItem("dagsDisableAutoRefresh");
   $("#auto_refresh").prop("checked", !isDisabled);
@@ -487,6 +499,7 @@ document.addEventListener("visibilitychange", handleVisibilityChange);
 
 $(window).on("load", () => {
   initAutoRefresh();
+  initAndCheckbox();
 
   $("body").on("mouseover", ".has-svg-tooltip", (e) => {
     const elem = e.target;
