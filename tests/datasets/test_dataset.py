@@ -441,3 +441,22 @@ def test_datasets_expression_error(expression: Callable[[], None], error: str) -
     with pytest.raises(TypeError) as info:
         expression()
     assert str(info.value) == error
+
+
+@pytest.mark.db_test
+@pytest.mark.usefixtures("clear_datasets")
+def test_blob_pattern_matching(session, dag_maker):
+    # Create dataset instances
+    datasets_csv = [Dataset(uri=f"s3://bucket/key/{i}.csv") for i in [1, 2, 3]]
+    datasets_json = [Dataset(uri=f"s3://bucket/key/{i}.json") for i in [4, 5]]
+
+    # DAG that triggers on datasets #1, #2 and #3 (ending with .csv)
+    with dag_maker(dag_id="upstream", schedule=["s3://bucket/key/*.json"], serialized=True, session=session
+                    ) as dag_csv: EmptyOperator(task_id="task1")
+
+    # DAG that triggers on datasets #4 and #5 (ending with .json)
+    with dag_maker(dag_id="downstream", schedule=["s3://bucket/key/*.json"], serialized=True, session=session
+                    ) as dag_json: EmptyOperator(task_id="task1")
+    
+    assert dag_csv.dataset_triggers.objects == datasets_csv
+    assert dag_json.dataset_triggers.objects == datasets_json
