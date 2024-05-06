@@ -451,7 +451,7 @@ def test_blob_pattern_matching(session, dag_maker):
     datasets_json = [Dataset(uri=f"s3://bucket/key/{i}.json") for i in [4, 5]]
 
     # DAG that triggers on datasets #1, #2 and #3 (ending with .csv)
-    with dag_maker(dag_id="upstream", schedule=["s3://bucket/key/*.json"], serialized=True, session=session
+    with dag_maker(dag_id="upstream", schedule=["s3://bucket/key/*.csv"], serialized=True, session=session
                     ) as dag_csv: EmptyOperator(task_id="task1")
 
     # DAG that triggers on datasets #4 and #5 (ending with .json)
