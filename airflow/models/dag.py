@@ -81,7 +81,7 @@ import airflow.templates
 from airflow import settings, utils
 from airflow.api_internal.internal_api_call import internal_api_call
 from airflow.configuration import conf as airflow_conf, secrets_backend_list
-from airflow.datasets import BaseDatasetEventInput, Dataset, DatasetAll
+from airflow.datasets import BaseDatasetEventInput, Dataset, DatasetAll, DatasetAny
 from airflow.datasets.manager import dataset_manager
 from airflow.exceptions import (
     AirflowDagInconsistent,
@@ -177,7 +177,7 @@ ScheduleInterval = Union[None, str, timedelta, relativedelta]
 # but Mypy cannot handle that right now. Track progress of PEP 661 for progress.
 # See also: https://discuss.python.org/t/9126/7
 ScheduleIntervalArg = Union[ArgNotSet, ScheduleInterval]
-ScheduleArg = Union[ArgNotSet, ScheduleInterval, Timetable, BaseDatasetEventInput, Collection["Dataset"]]
+ScheduleArg = Union[ArgNotSet, ScheduleInterval, Timetable, BaseDatasetEventInput, Collection["Dataset"], str]
 
 SLAMissCallback = Callable[["DAG", str, str, List["SlaMiss"], List[TaskInstance]], None]
 
@@ -640,6 +640,34 @@ class DAG(LoggingMixin):
             if not all(isinstance(x, Dataset) for x in schedule):
                 raise ValueError("All elements in 'schedule' should be datasets")
             self.dataset_triggers = DatasetAll(*schedule)
+
+        elif isinstance(schedule, str):
+            # @provide_session
+            session = NEW_SESSION
+            # get
+            #dag_ids = set(dag_id)
+            query = (
+                select(DatasetModel)
+                .where(DatasetModel.uri.in_(uriDatasets))
+            )
+            query = with_row_locks(query, of=DagModel, session=session)
+            
+            for dataset in get_datasets:
+                if (dataset in schedule):
+                    relatedDatasets.add(dataset)
+            
+            self.dataset_triggers = DatasetAny(relatedDatasets)
+
+        dag_by_ids = {dag.dag_id: dag for dag in dags}
+
+
+        """
+            elif isinstance(schedule, str)
+            search database for matching uri's to RegexString
+            put datasets corresponding to matching uri's in a Colletion(Dataset) -> List
+            self.dataset_triggers = DatasetAny(List)
+        """
+
         elif isinstance(schedule, Timetable):
             timetable = schedule
         elif schedule is not NOTSET and not isinstance(schedule, BaseDatasetEventInput):
