@@ -648,7 +648,7 @@ class DAG(LoggingMixin):
             
             for dataset in all_datasets:
                 uri = dataset.uri
-                if uri_matches_pattern(uri, schedule):
+                if self.uri_matches_pattern(uri, schedule):
                     dataset_matches.add(dataset)
             
             self.dataset_triggers = DatasetAny(dataset_matches)
