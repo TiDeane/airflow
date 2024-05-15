@@ -642,31 +642,16 @@ class DAG(LoggingMixin):
             self.dataset_triggers = DatasetAll(*schedule)
 
         elif isinstance(schedule, str):
-            # @provide_session
-            session = NEW_SESSION
-            # get
-            #dag_ids = set(dag_id)
-            query = (
-                select(DatasetModel)
-                .where(DatasetModel.uri.in_(uriDatasets))
-            )
-            query = with_row_locks(query, of=DagModel, session=session)
+            session=NEW_SESSION
+            all_datasets = session.query(Dataset).all()
+            dataset_matches = set() 
             
-            for dataset in get_datasets:
-                if (dataset in schedule):
-                    relatedDatasets.add(dataset)
+            for dataset in all_datasets:
+                uri = dataset.uri
+                if uri_matches_pattern(uri, schedule):
+                    dataset_matches.add(dataset)
             
-            self.dataset_triggers = DatasetAny(relatedDatasets)
-
-        dag_by_ids = {dag.dag_id: dag for dag in dags}
-
-
-        """
-            elif isinstance(schedule, str)
-            search database for matching uri's to RegexString
-            put datasets corresponding to matching uri's in a Colletion(Dataset) -> List
-            self.dataset_triggers = DatasetAny(List)
-        """
+            self.dataset_triggers = DatasetAny(dataset_matches)
 
         elif isinstance(schedule, Timetable):
             timetable = schedule
@@ -1294,6 +1279,9 @@ class DAG(LoggingMixin):
         if previous_of_following != dttm:
             return following
         return dttm
+    
+    def uri_matches_pattern(uri: String, pattern: String):
+        return True
 
     @provide_session
     def get_last_dagrun(self, session=NEW_SESSION, include_externally_triggered=False):
