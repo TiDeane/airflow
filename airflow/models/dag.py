@@ -636,22 +636,36 @@ class DAG(LoggingMixin):
         self.dataset_triggers: BaseDatasetEventInput | None = None
         if isinstance(schedule, BaseDatasetEventInput):
             self.dataset_triggers = schedule
-        elif isinstance(schedule, Collection) and not isinstance(schedule, str):
-            if not all(isinstance(x, Dataset) for x in schedule):
-                raise ValueError("All elements in 'schedule' should be datasets")
-            self.dataset_triggers = DatasetAll(*schedule)
+        #elif isinstance(schedule, Collection) and not isinstance(schedule, str):
+        #    if not all(isinstance(x, Dataset) for x in schedule):
+        #        raise ValueError("All elements in 'schedule' should be datasets")
+        #    self.dataset_triggers = DatasetAll(*schedule)
 
-        elif isinstance(schedule, str):
+        elif isinstance(schedule, str): # Need to differentiate from cron strings (previous elif)!
+            # This method of creating a session doesn't work
             session=NEW_SESSION
             all_datasets = session.query(Dataset).all()
             dataset_matches = set() 
             
-            for dataset in all_datasets:
+            for dataset in all_datasets: # Filter the query directly?
                 uri = dataset.uri
                 if self.uri_matches_pattern(uri, schedule):
                     dataset_matches.add(dataset)
             
-            self.dataset_triggers = DatasetAny(dataset_matches)
+            self.dataset_triggers = DatasetAny(*dataset_matches)
+        elif isinstance(schedule, list) and all(isinstance(x, str) for x in schedule):
+            # This method of creating a session doesn't work
+            session=NEW_SESSION
+            all_datasets = session.query(Dataset).all()
+            dataset_matches = set() 
+            
+            for dataset in all_datasets: # Filter the query directly?
+                uri = dataset.uri
+                for pattern in schedule:
+                    if self.uri_matches_pattern(uri, pattern):
+                        dataset_matches.add(dataset)
+            
+            self.dataset_triggers = DatasetAny(*dataset_matches)
 
         elif isinstance(schedule, Timetable):
             timetable = schedule
@@ -1281,7 +1295,10 @@ class DAG(LoggingMixin):
         return dttm
     
     def uri_matches_pattern(uri: String, pattern: String):
-        return True
+        import fnmatch
+
+        # Returns true if the dataset's URI matches the provided pattern
+        return fnmatch.fnmatch(uri, pattern)
 
     @provide_session
     def get_last_dagrun(self, session=NEW_SESSION, include_externally_triggered=False):
