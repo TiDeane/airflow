@@ -636,36 +636,16 @@ class DAG(LoggingMixin):
         self.dataset_triggers: BaseDatasetEventInput | None = None
         if isinstance(schedule, BaseDatasetEventInput):
             self.dataset_triggers = schedule
-        #elif isinstance(schedule, Collection) and not isinstance(schedule, str):
-        #    if not all(isinstance(x, Dataset) for x in schedule):
-        #        raise ValueError("All elements in 'schedule' should be datasets")
-        #    self.dataset_triggers = DatasetAll(*schedule)
 
-        elif isinstance(schedule, str): # Need to differentiate from cron strings (previous elif)!
+
+        elif isinstance(schedule, str) or (isinstance(schedule, list) and all(isinstance(x, str) for x in schedule)): # Need to differentiate from cron strings (previous elif)!
             # This method of creating a session doesn't work
-            session=NEW_SESSION
-            all_datasets = session.query(Dataset).all()
-            dataset_matches = set() 
-            
-            for dataset in all_datasets: # Filter the query directly?
-                uri = dataset.uri
-                if self.uri_matches_pattern(uri, schedule):
-                    dataset_matches.add(dataset)
-            
-            self.dataset_triggers = DatasetAny(*dataset_matches)
-        elif isinstance(schedule, list) and all(isinstance(x, str) for x in schedule):
-            # This method of creating a session doesn't work
-            session=NEW_SESSION
-            all_datasets = session.query(Dataset).all()
-            dataset_matches = set() 
-            
-            for dataset in all_datasets: # Filter the query directly?
-                uri = dataset.uri
-                for pattern in schedule:
-                    if self.uri_matches_pattern(uri, pattern):
-                        dataset_matches.add(dataset)
-            
-            self.dataset_triggers = DatasetAny(*dataset_matches)
+            self.dataset_triggers = DatasetAny(*self.search_matching_datasets(self, schedule))
+
+        elif isinstance(schedule, Collection) and not isinstance(schedule, str):
+            if not all(isinstance(x, Dataset) for x in schedule):
+                raise ValueError("All elements in 'schedule' should be datasets")
+            self.dataset_triggers = DatasetAll(*schedule)
 
         elif isinstance(schedule, Timetable):
             timetable = schedule
@@ -775,6 +755,28 @@ class DAG(LoggingMixin):
         # it's only use is for determining the relative
         # fileloc based only on the serialize dag
         self._processor_dags_folder = None
+
+    
+    @provide_session
+    def search_matching_datasets(self, regex: String | Collection, session=NEW_SESSION) :
+        from airflow.models.dataset import DagScheduleDatasetReference, DatasetModel
+
+        query = select(DatasetModel).join(DagScheduleDatasetReference, DagScheduleDatasetReference.dag_id == self.dag_id)
+        
+        all_datasets: list[DatasetModel] = session.scalars(query)
+        dataset_matches = set() 
+
+        for dataset in all_datasets: # Filter the query directly?
+            uri = dataset.uri
+            if isinstance(regex, String) and self.uri_matches_pattern(uri, regex):
+                dataset_matches.add(dataset)
+            elif isinstance(regex, Collection):
+                for pattern in regex:
+                    if self.uri_matches_pattern(uri, pattern):
+                        dataset_matches.add(dataset)
+
+        return dataset_matches
+    
 
     def get_doc_md(self, doc_md: str | None) -> str | None:
         if doc_md is None:
