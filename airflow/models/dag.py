@@ -758,13 +758,12 @@ class DAG(LoggingMixin):
 
     
     @provide_session
-    def search_matching_datasets(self, regex: String | Collection, session=NEW_SESSION) :
-        from airflow.models.dataset import DagScheduleDatasetReference, DatasetModel
+    def search_matching_datasets(self, regex: String | Collection, session: Session = NEW_SESSION) :
 
-        query = select(DatasetModel).join(DagScheduleDatasetReference, DagScheduleDatasetReference.dag_id == self.dag_id)
-        
-        all_datasets: list[DatasetModel] = session.scalars(query)
-        dataset_matches = set() 
+        session = settings.Session()
+
+        all_datasets = session.scalar(select(DatasetModel))
+        dataset_matches = set()
 
         for dataset in all_datasets: # Filter the query directly?
             uri = dataset.uri
@@ -776,7 +775,6 @@ class DAG(LoggingMixin):
                         dataset_matches.add(dataset)
 
         return dataset_matches
-    
 
     def get_doc_md(self, doc_md: str | None) -> str | None:
         if doc_md is None:
